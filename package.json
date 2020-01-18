@@ -27,6 +27,7 @@
     "@nestjs/common": "^6.0.0"
   },
   "dependencies": {
+    "btoa": "^1.2.1",
     "minio": "^7.0.12"
   },
   "devDependencies": {

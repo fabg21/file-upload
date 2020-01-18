@@ -16,14 +16,14 @@ import {
   Param,
   UploadedFile,
   UseInterceptors,
+  Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { from, of } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
-
+import { map, catchError, tap, concatAll } from 'rxjs/operators';
 
 import { NestMinioClientService } from './nest-minio-client.service';
 
@@ -55,21 +55,33 @@ export class NestMinioClientController {
     const fileName: string = file.filename;
     const filePath = file.path;
 
-    return from(this.minioService.uploadFile(bucket, fileName, filePath, metaData)).pipe(
-      map(etag => ({fileName, etag, originalName: file.originalname})),
-      catchError(err => of(err))
+    return from(
+      this.minioService.uploadFile(bucket, fileName, filePath, metaData),
+    ).pipe(
+      map(etag => ({ fileName, etag, originalName: file.originalname })),
+      catchError(err => of(err)),
     );
+  }
+  @Get('download/:destination/:fileId')
+  async downloadFile(
+    @Param('destination') bucket,
+    @Param('fileId') fileName,
+    @Res() res,
+  ) {
+    const folderPath = setDestinationPath(bucket);
+
+    this.minioService
+      .downloadFile(bucket, fileName, folderPath)
+      .then(() => {
+        res.sendFile(fileName, { root: folderPath });
+      })
+      .catch(err => console.log(err))
+      .finally(() => console.log('all ended well! time for cleaning up...'));
   }
 }
 export const setFileDestination = (req, file, cb) => {
-  const destination = req.params.destination;
-  const filePath = `${process.cwd()}/tmp_files/${
-    !!destination ? destination : 'unknown'
-  }`;
-  if (!existsSync(filePath)) {
-    mkdirSync(filePath, { recursive: true });
-  }
-  return cb(null, filePath);
+  const dest = req.params.destination;
+  return cb(null, setDestinationPath(dest));
 };
 
 export const setFileName = (req, file, cb) => {
@@ -79,3 +91,15 @@ export const setFileName = (req, file, cb) => {
     .join('');
   return cb(null, `${randomName}${extname(file.originalname)}`);
 };
+
+export const setDestinationPath = (destination: string) => {
+  const filePath = getFilePath(destination);
+  if (!existsSync(filePath)) {
+    createFilePath(filePath);
+  }
+  return filePath;
+};
+
+export const getFilePath = (destination: string) =>
+  `${process.cwd()}/tmp_files/${!!destination ? destination : 'unknown'}`;
+export const createFilePath = path => mkdirSync(path, { recursive: true });
