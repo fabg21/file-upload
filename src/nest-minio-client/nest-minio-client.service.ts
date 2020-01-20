@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import * as btoa from 'btoa';
 import { MINIO_CONNECTION } from '../constants';
 
 @Injectable()
@@ -8,6 +7,8 @@ export class NestMinioClientService {
 
   async uploadFile(bucket, fileName, filePath, metaData) {
     try {
+      await this.checkBucket(bucket, true);
+
       const etag = await this.minioClient.fPutObject(
         bucket,
         fileName,
@@ -24,48 +25,34 @@ export class NestMinioClientService {
   }
 
   async downloadFile(bucket: string, fileName: string, folderPath: string) {
+    await this.checkBucket(bucket);
+
     const filePath = `${folderPath}/${fileName}`;
+
     try {
       const file = await this.minioClient.fGetObject(
         bucket,
         fileName,
         filePath,
       );
-      console.log(file);
       return file;
     } catch (err) {
       console.log(err);
     }
   }
 
-  getFileAsStream(bucket, fileName) {
-    console.log('hello!!!');
+  private async checkBucket(bucket: string, makeBucket = false) {
     try {
-      const file: Promise<any> = this.minioClient.getObject(bucket, fileName);
-      return file
-        .then(stream => stream)
-        .then(stream => {
-          return new Promise<any>((resolve, reject) => {
-            // let data = '';
-            // fs.createReadStream()
-            let data = Buffer.from('');
-            // console.log(data);
-            stream.on('data', chunk => (data = Buffer.concat([data, chunk])));
-            stream.on('end', () => resolve(data));
-            stream.on('error', error => reject(error));
-          });
-        })
-        .then((buffer: Buffer) =>
-          btoa(
-            new Uint8Array(buffer).reduce(
-              (data, byte) => data + String.fromCharCode(byte),
-              '',
-            ),
-          ),
-        )
-        .catch(err => console.log('an error occured!!!', err));
+      const bucketExists: boolean = await this.minioClient.bucketExists(bucket);
+      if (!bucketExists) {
+        if (makeBucket) {
+          await this.minioClient.makeBucket(bucket);
+        } else {
+          throw new Error('the required bucket does not exist');
+        }
+      }
     } catch (err) {
-      console.error('an error occured');
+      console.log(err);
     }
   }
 }

@@ -23,7 +23,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { from, of } from 'rxjs';
-import { map, catchError, tap, concatAll } from 'rxjs/operators';
+import { map, catchError } from 'rxjs/operators';
 
 import { NestMinioClientService } from './nest-minio-client.service';
 
