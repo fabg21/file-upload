@@ -1,9 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { MINIO_CONNECTION } from '../constants';
 
 @Injectable()
 export class NestMinioClientService {
-  constructor(@Inject(MINIO_CONNECTION) private readonly minioClient) {}
+  private readonly logger: Logger;
+
+  constructor(@Inject(MINIO_CONNECTION) private readonly minioClient) {
+    this.logger = new Logger('NestMinioClientService');
+  }
 
   async uploadFile(bucket, fileName, filePath, metaData) {
     try {
@@ -37,7 +41,7 @@ export class NestMinioClientService {
       );
       return file;
     } catch (err) {
-      console.log(err);
+      this.logger.error(err);
       throw new Error(`an error occured while fetching the file : ${err}`);
     }
   }
@@ -53,7 +57,7 @@ export class NestMinioClientService {
         }
       }
     } catch (err) {
-      console.log(err);
+      this.logger.error(err);
     }
   }
 }

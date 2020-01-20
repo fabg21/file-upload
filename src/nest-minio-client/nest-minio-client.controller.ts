@@ -1,14 +1,10 @@
-/**
- *  NestMinioClientController is a testing controller that verifies that
- *  NestMinioModule was generated properly.
- *
- *  You can quickly verify this by running `npm run start:dev`, and then
- *  connecting to `http://localhost:3000` with your browser.  It should return
- *  a custom message like `Hello from NestMinioModule`.
- *
- *  Once you begin customizing NestMinioModule, you'll probably want
- *  to delete this controller.
- */
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+import { createHash } from 'crypto';
+import { from, of } from 'rxjs';
+import { map, catchError } from 'rxjs/operators';
+
 import {
   Controller,
   Get,
@@ -17,19 +13,19 @@ import {
   UploadedFile,
   UseInterceptors,
   Res,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { existsSync, mkdirSync } from 'fs';
-import { from, of } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
 
 import { NestMinioClientService } from './nest-minio-client.service';
 
 @Controller()
 export class NestMinioClientController {
-  constructor(private minioService: NestMinioClientService) {}
+  private readonly logger: Logger;
+
+  constructor(private minioService: NestMinioClientService) {
+    this.logger = new Logger('NestMinioClientController');
+  }
 
   @Get()
   index() {
@@ -41,7 +37,7 @@ export class NestMinioClientController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (req, file, cb) => setFileDestination(req, file, cb),
-        filename: (req, file, cb) => setFileName(req, file, cb),
+        filename: (req, file, cb) => setHashName(req, file, cb),
       }),
     }),
   )
@@ -49,13 +45,13 @@ export class NestMinioClientController {
     const metaData = {
       'Content-Type': 'application/octet-stream',
       'X-Amz-Meta-Testing': 1234,
+      // tslint:disable-next-line: object-literal-key-quotes
       example: 5678,
     };
     const bucket: string = destination;
     const fileName: string = file.filename;
     const filePath = file.path;
 
-  
     return from(
       this.minioService.uploadFile(bucket, fileName, filePath, metaData),
     ).pipe(
@@ -63,22 +59,29 @@ export class NestMinioClientController {
       catchError(err => of(err)),
     );
   }
+
   @Get('download/:destination/:fileId')
-  async downloadFile(
+  downloadFile(
     @Param('destination') bucket,
     @Param('fileId') fileName,
     @Res() res,
   ) {
+    this.logger.log(`downloading file ${fileName}`);
+
     const folderPath = setDestinationPath(bucket);
 
-    this.minioService
-      .downloadFile(bucket, fileName, folderPath)
-      .then(() => {
-        res.sendFile(fileName, { root: folderPath });
-        // console.log(`${folderPath}/${fileName}`);
-        // res.send(`${folderPath}/${fileName}`);
-      })
-      .catch(err => console.log(err));
+    if (existsSync(`${folderPath}/${fileName}`)) {
+      this.logger.log('serving file from cache');
+      res.sendFile(fileName, { root: folderPath });
+    } else {
+      this.logger.log('serving file from minio server');
+      this.minioService
+        .downloadFile(bucket, fileName, folderPath)
+        .then(() => {
+          res.sendFile(fileName, { root: folderPath });
+        })
+        .catch(err => this.logger.error(err));
+    }
   }
 }
 export const setFileDestination = (req, file, cb) => {
@@ -86,12 +89,9 @@ export const setFileDestination = (req, file, cb) => {
   return cb(null, setDestinationPath(dest));
 };
 
-export const setFileName = (req, file, cb) => {
-  const randomName = Array(32)
-    .fill(null)
-    .map(() => Math.round(Math.random() * 16).toString(16))
-    .join('');
-  return cb(null, `${randomName}${extname(file.originalname)}`);
+export const setHashName = (req, file, cb) => {
+  const hashedName = getHash(file.originalname);
+  return cb(null, `${hashedName}${extname(file.originalname)}`);
 };
 
 export const setDestinationPath = (destination: string) => {
@@ -104,4 +104,14 @@ export const setDestinationPath = (destination: string) => {
 
 export const getFilePath = (destination: string) =>
   `${process.cwd()}/tmp_files/${!!destination ? destination : 'unknown'}`;
+
 export const createFilePath = path => mkdirSync(path, { recursive: true });
+
+export const getHash = (
+  str: string,
+  alg = 'sha1',
+  digest: 'hex' | 'latin1' | 'base64' = 'hex',
+) =>
+  createHash(alg)
+    .update(str)
+    .digest(digest);
