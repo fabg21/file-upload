@@ -38,6 +38,7 @@ export class NestMinioClientService {
       return file;
     } catch (err) {
       console.log(err);
+      throw new Error(`an error occured while fetching the file : ${err}`);
     }
   }
 

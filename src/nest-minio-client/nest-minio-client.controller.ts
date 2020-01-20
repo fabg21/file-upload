@@ -55,6 +55,7 @@ export class NestMinioClientController {
     const fileName: string = file.filename;
     const filePath = file.path;
 
+  
     return from(
       this.minioService.uploadFile(bucket, fileName, filePath, metaData),
     ).pipe(
@@ -74,9 +75,10 @@ export class NestMinioClientController {
       .downloadFile(bucket, fileName, folderPath)
       .then(() => {
         res.sendFile(fileName, { root: folderPath });
+        // console.log(`${folderPath}/${fileName}`);
+        // res.send(`${folderPath}/${fileName}`);
       })
-      .catch(err => console.log(err))
-      .finally(() => console.log('all ended well! time for cleaning up...'));
+      .catch(err => console.log(err));
   }
 }
 export const setFileDestination = (req, file, cb) => {
